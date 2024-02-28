@@ -109,6 +109,8 @@ def download_and_analyze_tess_data(observation_id, download_dir):
     plt.savefig(r'C:\Users\aadis\Desktop\FLARIMA Plots\flare_detection_{tic_id}.png')  # Save the plot as an image
     plt.show()
 
+    return normalized_flux, time_days, file_path
+
 observation_id = "tess2019006130736-s0007-0000000266744225-0131-s"
 tic_id = observation_id.split('0000000')[1].split('-')[0]
 download_dir = r'C:\Users\aadis\Downloads\MAST'
