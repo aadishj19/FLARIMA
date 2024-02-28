@@ -1,0 +1,1 @@
+Script for detecting stellar flares in TESS data using ARIMA modeling. The method combines time series analysis with ARIMA models to identify transient events in light curve data. Automating the process, FLARIMA provides a robust tool to pinpoint flare occurrences in observed stellar flux
