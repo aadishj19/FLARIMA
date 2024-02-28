@@ -106,6 +106,7 @@ def download_and_analyze_tess_data(observation_id, download_dir):
 
     handles, labels = axs[1].get_legend_handles_labels()
     fig.legend(handles, labels, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.93), frameon=False)
+    plt.savefig(r'C:\Users\aadis\Desktop\FLARIMA Plots\flare_detection_{tic_id}.png')  # Save the plot as an image
     plt.show()
 
 observation_id = "tess2019006130736-s0007-0000000266744225-0131-s"
