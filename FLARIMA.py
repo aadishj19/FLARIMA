@@ -5,113 +5,122 @@
 
 
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.interpolate import UnivariateSpline
-from tqdm import tqdm
 from astropy.timeseries import LombScargle
-from astropy.stats import sigma_clip
-from lightkurve import TessLightCurveFile, TessTargetPixelFile
+from scipy.interpolate import UnivariateSpline
+from lightkurve import TessLightCurveFile
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
 from statsmodels.tsa.arima.model import ARIMA
+from tqdm import tqdm
+from astroquery.mast import Observations, Tesscut
 from astroquery.mast import Observations
-from astroquery.exceptions import InvalidQueryError
+import astropy.units as u
+from pmdarima import auto_arima
+import os
+from astropy.table import Table
+from astropy.io import fits
+import warnings
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+from joblib import Parallel, delayed
 
-def download_and_analyze_tess_data(observation_id, download_dir):
-    obs_table = Observations.query_criteria(obs_id=observation_id)
-    if len(obs_table) < 1:
-        raise InvalidQueryError("Observation list is empty, no associated products.")
-    data_products = Observations.get_product_list(obs_table[0]['obsid'])
-    manifest = Observations.download_products(data_products, download_dir=download_dir)
-    
-    lc_file_paths = [m['Local Path'] for m in manifest if m['Local Path'].endswith('_lc.fits')] 
+def analyze_tess_data_from_directory(directory):
+    lc_file_paths = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('_lc.fits')]
     
     for file_path in lc_file_paths:
-        lcf = TessLightCurveFile(file_path)  
-        pdcsap_flux = lcf.PDCSAP_FLUX.flux
-        time = lcf.PDCSAP_FLUX.time.value
-        time_days = (time - time[0])
-        median_flux = np.median(pdcsap_flux)
-        normalized_flux = pdcsap_flux / median_flux
+        lcf = TessLightCurveFile(file_path)
+        flux = lcf.flux
+        flux_err = lcf.flux_err
+        time = lcf.time.value
+        time_days = time
+        median_flux = np.median(flux)
+        normalized_flux = flux / median_flux
         
-# Step 3: Detrend the data using cubic splines
-    knots = np.linspace(time_days.min(), time_days.max(), 20)
-    spl = UnivariateSpline(time_days, normalized_flux, k=3, s=0)
-    detrended_flux = normalized_flux - spl(time_days)
+# Detrend the data using cubic splines
+        knots = np.linspace(time_days.min(), time_days.max(), 20)
+        spl = UnivariateSpline(time_days, normalized_flux, k=3, s=0)
+        detrended_flux = normalized_flux - spl(time_days)
 
-#model = sm.tsa.ARIMA(detrended_flux, order=(p, d, q))
-#results = model.fit(start_params=[0, 0, 0, 0])  # Specify initial values for AR and MA parameters
-
-# Step 4: Reevaluate ARIMA Model Parameters
-    p_values = range(0, 5)
-    d_values = range(0, 3)
-    q_values = range(0, 5)
+# Reevaluate ARIMA Model Parameters
+        p_values = range(0, 5)
+        d_values = range(0, 3)
+        q_values = range(0, 5)
 
 # Hyperparameter Optimization
-    total_iterations = len(p_values) * len(d_values) * len(q_values)
-    progress_bar = tqdm(total=total_iterations, desc="Searching for best ARIMA model", position=0)
+        total_iterations = len(p_values) * len(d_values) * len(q_values)
+        progress_bar = tqdm(total=total_iterations, desc="Searching for best ARIMA model", position=0)
 
-    best_aic = float("inf")
-    best_model = None
+        best_aic = float("inf")
+        best_model = None
 
-    for p in p_values:
-        for d in d_values:
-            for q in q_values:
-                progress_bar.update(1)  # Update the progress bar
-                try:
-                    model = ARIMA(normalized_flux, order=(p, d, q))
-                    model_fit = model.fit()
-                    aic = model_fit.aic
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)  # Ignore ConvergenceWarning
 
-                    if aic < best_aic:
-                        best_aic = aic
-                        best_model = model_fit
-                except:
-                    continue
+        for p in p_values:
+            for d in d_values:
+                for q in q_values:
+                    progress_bar.update(1)  # Update the progress bar
+                    try:
+                        model = ARIMA(normalized_flux, order=(p, d, q))
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings("ignore")  # Ignore all warnings inside the context manager
+                            model_fit = model.fit()
+                        aic = model_fit.aic
 
-    progress_bar.close()
+                        if aic < best_aic:
+                            best_aic = aic
+                            best_model = model_fit
+                    except:
+                        continue
 
-# Step 5: Predict flux using the best-fit ARIMA model
-    predicted_flux = best_model.predict(start=0, end=len(time_days) - 1)
+        progress_bar.close()
 
-# Step 6: Calculate residuals
-    residuals = normalized_flux - predicted_flux
+# Predict flux using the best-fit ARIMA model
+        predicted_flux = best_model.predict(start=0, end=len(time_days) - 1)
 
-# Step 7: Detect flares
-    flare_threshold = np.std(residuals) * 4
-    flare_indices = np.where(residuals > flare_threshold)[0]
-    flare_times = time_days[flare_indices]
-    threshold = median_flux + (flare_threshold * (np.max(normalized_flux) - np.min(normalized_flux)))
-# Print flare times
-    print("Detected Flare Times:")
-    print(flare_times)
+# Calculate residuals
+        residuals = normalized_flux - predicted_flux
 
-#Step 8: Plotting:
-    fig, axs = plt.subplots(3, 1, figsize=(12, 18), sharex=True, gridspec_kw={'hspace': 0})
+# Detect flares
+        flare_threshold = np.std(residuals) * 3
+        flare_indices = np.where(residuals > flare_threshold)[0]
+        flare_times = time_days[flare_indices]
 
-# Plot 1: Detected Flares and ARIMA Model Prediction
-    axs[0].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
-    axs[0].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
-    axs[0].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
-    axs[0].axhline(threshold, color='r', linestyle='--', label='Threshold')
-    axs[0].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
-    axs[0].set_ylabel('Normalized Flux')
+# Plotting
+        fig, axs = plt.subplots(2, 1, figsize=(12, 18), sharex=True, gridspec_kw={'hspace': 0})
 
+        # Plot 1: Detected Flares and ARIMA Model Prediction
+        axs[0].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
+        axs[0].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
+        axs[0].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
+        axs[0].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
+        axs[0].set_ylabel('Normalized Flux')
 
 # Plot 2: Detected Flares without ARIMA overlay
-    axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
-    axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
-    axs[1].set_xlabel('Time (days)')
-    axs[1].set_ylabel('Normalized Flux')
+        axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
+        axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
+        axs[1].set_xlabel('Time (days)')
+        axs[1].set_ylabel('Normalized Flux')
 
-    handles, labels = axs[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.93), frameon=False)
-    plt.savefig(r'C:\Users\aadis\Desktop\FLARIMA Plots\flare_detection_{tic_id}.png'.format(tic_id=tic_id))  # Save the plot as an image
-    plt.show()
-    
+        handles, labels = axs[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.93), frameon=False)
+
+# Extract TIC ID from the file name
+        file_name = os.path.basename(file_path)
+        obs_id = file_name.split('-')[2]
+        tic_id = obs_id.split('_')[-1]  # Extracting TIC ID from the observation ID
+        
+# Save the detected flare times to a .txt file
+        flare_times_file = os.path.join(r'C:\Users\aadis\Desktop\FLARIMA Flare Times', f'flare_times_TIC{tic_id}.txt')
+        np.savetxt(flare_times_file, flare_times)
+
+# Save the plot with TIC ID in the file name
+        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\FLARIMA Plots', f'flare_detection_TIC{tic_id}.png')
+# Save the plot as an image
+        plt.savefig(plot_file_path)
+        plt.show()
+
     return normalized_flux, time_days, file_path
 
 # Example usage
-observation_id = "tess2019006130736-s0007-0000000266744225-0131-s"
-tic_id = observation_id.split('0000000')[1].split('-')[0]
-download_dir = r'C:\Users\aadis\Downloads\MAST'
-normalized_flux, time_days, file_path = download_and_analyze_tess_data(observation_id, download_dir)
+directory = r'C:\Users\aadis\Desktop\Sector 1'  # Directory containing TESS data files
+normalized_flux, time_days, file_path = analyze_tess_data_from_directory(directory)
 
