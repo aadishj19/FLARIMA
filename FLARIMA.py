@@ -141,41 +141,56 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
                 filtered_indices.append((start, peak, end))
 
         # Extract the times for the filtered flares
-        filtered_flare_times = [time_days[start:end+1] for start, peak, end in filtered_indices]
-
-        # Plotting
-        fig, axs = plt.subplots(2, 1, figsize=(12, 18), sharex=True, gridspec_kw={'hspace': 0})
-
+        filtered_flare_times = [(time_days[start], time_days[end]) for start, peak, end in filtered_indices]
+        
         # Extract TIC ID from the file name
         file_name = os.path.basename(file_path)
         obs_id = file_name.split('-')[2]
         tic_id = obs_id.split('0000000')[1].split('-')[0]  # Extracting TIC ID from the observation ID
-
+        
+        # Plotting
+        fig, axs = plt.subplots(2, 1, figsize=(12, 18), sharex=True, gridspec_kw={'hspace': 0})
+        
         # Plot 1: Detected Flares and ARIMA Model Prediction
+        filtered_times = [time_days[start:end+1] for start, peak, end in filtered_indices]
+        filtered_flux = [normalized_flux[start:end+1] for start, peak, end in filtered_indices]
+        
         axs[0].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
         axs[0].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
         axs[0].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
         axs[0].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
         axs[0].set_ylabel('Normalized Flux')
 
-        # Plot 2: Detected Flares without ARIMA overlay
+        # Plot 2: Detected Flares that meet the additional criteria
         axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
-        axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
-        axs[1].set_xlabel('Time (days)')
+        axs[1].scatter(filtered_times, filtered_flux, color='g', label='Detected Flares')
+        axs[1].set_xlabel('Time (BJD)')
         axs[1].set_ylabel('Normalized Flux')
-
+        
         handles, labels = axs[0].get_legend_handles_labels()
         fig.legend(handles, labels, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 0.93), frameon=False)
-
-        # Save the detected flare times to a .txt file
-        flare_times_file = os.path.join(r'C:\Users\aadis\Desktop\FLARIMA Flare Times', f'flare_times_TIC{tic_id}.txt')
-        np.savetxt(flare_times_file, filtered_flare_times)
-
+        
         # Save the plot with TIC ID in the file name
         plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\FLARIMA Plots', f'flare_detection_TIC{tic_id}.png')
         # Save the plot as an image
         plt.savefig(plot_file_path)
         plt.show()
+
+
+        # Saving the results to a CSV file
+        csv_file = os.path.join(directory, "flare_results.csv")
+        with open(csv_file, 'a', newline='') as file:
+            writer = csv.writer(file)
+            for start, peak, end in filtered_indices:
+                flare_start_time = time_days[start]
+                flare_end_time = time_days[end]
+                flare_peak_index = peak
+                flare_peak_time = time_days[peak]
+                energy = np.sum(normalized_flux[start:end+1])
+                excluded = False
+
+                writer.writerow([tic_id, obs_id, start, end, flare_start_time, flare_end_time,
+                                 flare_peak_index, flare_peak_time, energy, excluded, amplitude])
 
         # Update the last processed file
         with open("last_processed_file.txt", "w") as file:
@@ -185,4 +200,13 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
 
 # Example usage
 directory = r'C:\Users\aadis\Desktop\Sector 1'  # Directory containing TESS data files
-normalized_flux, time_days, file_path = analyze_tess_data_from_directory(directory)
+
+# Create a new CSV file and write the header row
+csv_file = os.path.join(directory, "flare_results.csv")
+with open(csv_file, 'w', newline='') as file:
+    writer = csv.writer(file)
+    writer.writerow(['tessid', 'sector', 'time_start_index', 'time_end_index', 'flare_start_time', 'flare_end_time',
+                     'flare_peak_index', 'flare_peak_time', 'energy', 'excluded', 'flare_amp'])
+
+# Run the analysis and save the results to the CSV file
+analyze_tess_data_from_directory(directory)
