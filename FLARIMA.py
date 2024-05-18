@@ -5,12 +5,10 @@
 import os
 import numpy as np
 import warnings
-from scipy.interpolate import UnivariateSpline
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.exceptions import ConvergenceWarning
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import statsmodels.api as sm
 from astroquery.mast import Observations, Tesscut
 import astropy.units as u
 from astropy.table import Table
@@ -19,11 +17,9 @@ from scipy.optimize import curve_fit
 import csv
 import pandas as pd
 from lightkurve import TessLightCurveFile
-from astropy.utils.data import download_file
 import itertools
-from astropy.timeseries import LombScargle
 import pickle
-from scipy.signal import find_peaks
+import logging
 import scipy.optimize as opt
 import scipy.integrate as integrate
 
@@ -39,7 +35,7 @@ def find_flare_times(flare_indices, time_days, normalized_flux):
             start_index -= 1
         flare_start_times.append(time_days[start_index])
 
-        # The peak time is direct; no change needed from original description
+        # The peak time is direct
         peak_flux = normalized_flux[index]
         flare_peak_times.append(time_days[index])
 
@@ -54,15 +50,58 @@ def find_flare_times(flare_indices, time_days, normalized_flux):
 
     return flare_start_times, flare_end_times, flare_peak_times
 
+# Initialize logging
+logging.basicConfig(filename='flare_detection_errors.log', level=logging.ERROR)
+
+# Define the data cleaning function
+def clean_data(time, flux):
+    """Replace `inf` and `NaN` values in both time and flux arrays."""
+    cleaned_flux = np.nan_to_num(flux, nan=0.0, posinf=0.0, neginf=0.0)
+    # Keep only entries where both time and flux are finite
+    mask = np.isfinite(time) & np.isfinite(cleaned_flux)
+    cleaned_time = time[mask]
+    cleaned_flux = cleaned_flux[mask]
+    return cleaned_time, cleaned_flux
+
+# Modify the exponential_decay function to handle overflows
 def exponential_decay(t, A, t0, tau, C):
-    return A * np.exp(-(t - t0) / tau) + C
+    exp_argument = np.clip(-(t - t0) / tau, a_min=None, a_max=20) # Prevent overflow
+    return A * np.exp(exp_argument) + C
 
+# Wrap curve fitting in a try-except block and logs issues
+# Fit Exponential Decay
 def fit_exponential_decay(time, flux, initial_guess=(1, 0, 1, 1)):
-    bounds = ([0, time.min(), 0, 0], [np.inf, time.max(), np.inf, np.inf])
-    params, cov = opt.curve_fit(exponential_decay, time, flux, p0=initial_guess, bounds=bounds)
-    return params
+    try:
+        time, flux = clean_data(time, flux)  # Clean data first
+        # Set bounds based on the actual time and flux data
+        A_bound = (0, np.inf)
+        t0_bound = (time.min(), time.max())
+        tau_bound = (0, np.inf)
+        C_bound = (0, np.inf)
+        bounds = (A_bound[0], t0_bound[0], tau_bound[0], C_bound[0]), (A_bound[1], t0_bound[1], tau_bound[1], C_bound[1])
 
+        # Validate and debug the initial guess and bounds:
+        print(f"Initial Guess: {initial_guess}")
+        print(f"Bounds: {bounds}")
+
+        # Ensure initial guess within bounds
+        for guess, low, high in zip(initial_guess, *bounds):
+            if not (low <= guess <= high):
+                raise ValueError(f"Initial guess {guess} is out of bounds {low}, {high}")
+
+        params, cov = curve_fit(exponential_decay, time, flux, p0=initial_guess, bounds=bounds)
+        return params
+    except RuntimeError as e:
+        logging.error(f"Error in curve fitting: {e}")
+        return None
+    except ValueError as e:
+        logging.error(f"Value error in curve fitting: {e}")
+        return None
+
+# Explicitly handle the case where curve fitting fails by returning np.nan for integration
 def integrate_exponential_decay(params, start, end):
+    if params is None:
+        return np.nan
     A, t0, tau, C = params
     integral, _ = integrate.quad(lambda t: A * np.exp(-(t - t0) / tau) + C, start, end)
     return integral
@@ -89,11 +128,13 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         time = lcf.time.value
         time_days = time
         median_flux = np.median(flux)
-        normalized_flux = flux / median_flux
+        std_flux = np.std(flux)
+        normalized_flux = (flux - median_flux) / std_flux
+        normalized_flux = normalized_flux + 1
 
-        # Add a constant to detrended flux to set baseline to 1
-        baseline = 1 
-        normalized_flux += (baseline - np.min(normalized_flux))
+        # Add a constant to the flux to set baseline to 1
+        #baseline = 1 
+        #normalized_flux += (baseline - np.min(normalized_flux))
 
         # Reevaluate ARIMA Model Parameters
         p_values = range(0, 3)
@@ -135,7 +176,7 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         residuals = normalized_flux - predicted_flux
 
         # Detect flares
-        flare_threshold = np.std(residuals) * 3
+        flare_threshold = np.std(residuals) * 3.5
         flare_indices = np.where(residuals > flare_threshold)[0]
         flare_times = time_days[flare_indices]
         
@@ -148,7 +189,7 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         tic_id = obs_id.split('0000000')[1].split('-')[0]  # Extracting TIC ID from the observation ID
         
         # Apply additional flare detection criteria
-        min_duration = 0.002  # Minimum flare duration in days
+        min_duration = 0.004  # Minimum flare duration in days
         min_amplitude = 0.0005  # Minimum flare amplitude
 
         # Filter out flares that do not meet the criteria
@@ -201,14 +242,13 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         axs[1].set_ylabel('Normalized Flux')
 
         # Save the plot with TIC ID in the file name
-        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\May Plots', f'flare_detection_TIC{tic_id}.png')
+        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', f'flare_detection_TIC{tic_id}.png')
         plt.savefig(plot_file_path)
                 
                 
         # Extract flare properties and save to CSV
-        # Extract flare properties and append them to a CSV file
         headers = ['tess_id', 'flare_start_time', 'flare_end_time', 'flare_peak_time', 'amplitude', 'duration', 'energy']
-        csv_file_path = os.path.join(directory, "flare_results_may.csv")
+        csv_file_path = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', "flare_results_may_17.csv")
         file_exists = os.path.isfile(csv_file_path)
 
         with open(csv_file_path, 'a', newline='') as csvfile:
@@ -225,12 +265,20 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
                 duration = end_time - start_time
 
                 writer.writerow([tic_id, start_time, end_time, peak_time, amplitude, duration, energy])
+                
+                
+        # Update the last processed file
+        with open("last_processed_file.txt", "w") as file:
+            file.write(file_path)
+            
+            
+    return normalized_flux, file_path
 
 # Example usage
 directory = r'C:\Users\aadis\Downloads\comparison'  # Directory containing TESS data files
 
 # Create a new CSV file and write the header row
-csv_file = os.path.join(directory, "flare_results_may.csv")
+csv_file = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', "flare_results_may_17.csv")
 
 # Run the analysis and save the results to the CSV file
 analyze_tess_data_from_directory(directory)
