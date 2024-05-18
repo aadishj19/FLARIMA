@@ -1,0 +1,152 @@
+import pandas as pd
+from astroquery.vizier import Vizier
+
+# Load your catalog into a pandas DataFrame
+my_catalog = pd.read_csv(r'C:\Users\aadis\Desktop\May17_plots\flare_results_may_17.csv')
+
+# Rename 'tess_id' column to 'TIC' for consistency
+my_catalog = my_catalog.rename(columns={"tess_id": "TIC"})
+
+# Print to verify data loading
+print("My Catalog:")
+print(my_catalog.head())
+
+# Count the number of flares detected for each TIC ID in your catalog
+my_flare_counts = my_catalog['TIC'].value_counts().reset_index()
+my_flare_counts.columns = ['TIC', 'flare_count_my']
+
+# Print to verify the counts
+print("My Flare Counts:")
+print(my_flare_counts.head())
+
+# Initiate Vizier with a row limit of 2402 to fetch the first 2402 rows
+vizier = Vizier(columns=["TIC", "Teff", "Sec"], row_limit=2402)
+
+# Search for and fetch the other catalog from Vizier, filtering by Sector 2
+catalog_id = 'J/AJ/159/60/table1'  # Replace with the actual catalog id
+result = vizier.query_constraints(catalog=catalog_id, Sec='2')
+
+# Check if results are found
+if not result:
+    raise ValueError("No results found from Vizier query.")
+
+# Convert the result to a pandas DataFrame
+other_catalog = result[0].to_pandas()
+
+# Ensure the other catalog has columns: 'TIC' and 'Teff'
+# Rename columns if necessary
+other_catalog = other_catalog.rename(columns={"tess_id": "TIC"})
+
+# Print to verify data loading
+print("Other Catalog:")
+print(other_catalog.head())
+
+# Count the number of flares in the other catalog
+other_flare_counts = other_catalog['TIC'].value_counts().reset_index()
+other_flare_counts.columns = ['TIC', 'flare_count_other']
+
+# Print to verify the counts
+print("Other Flare Counts:")
+print(other_flare_counts.head())
+
+# Aggregate temperature information, ensuring unique TIC rows
+unique_other_catalog = other_catalog[['TIC', 'Teff']].drop_duplicates(subset='TIC')
+
+# Print to verify unique TICs for temperature data
+print("Unique TICs for Temperature Data:")
+print(unique_other_catalog.head())
+
+# Merge all_tics with flare counts from your catalog
+merged_catalog = my_catalog.merge(my_flare_counts, on='TIC', how='left')
+
+# Print to verify the first merge
+print("After merging with my_flare_counts:")
+print(merged_catalog.head())
+print("Row count after first merge:", merged_catalog.shape[0])
+
+# Merge with the other catalog's flare counts
+merged_catalog = merged_catalog.merge(other_flare_counts, on='TIC', how='left')
+
+# Print to verify the second merge
+print("After merging with other_flare_counts:")
+print(merged_catalog.head())
+print("Row count after second merge:", merged_catalog.shape[0])
+
+# Merge with the unique temperature information
+merged_catalog = merged_catalog.merge(unique_other_catalog, on='TIC', how='left')
+
+# Print to verify the third merge
+print("After merging with unique_other_catalog:")
+print(merged_catalog.head())
+print("Row count after third merge:", merged_catalog.shape[0])
+
+# Create columns to reflect whether a flare was detected in each catalog
+merged_catalog['MY_TIC'] = merged_catalog['flare_count_my'].apply(lambda x: True if pd.notnull(x) else False)
+merged_catalog['THEIR_TIC'] = merged_catalog['flare_count_other'].apply(lambda x: True if pd.notnull(x) else False)
+
+# Create Teff columns for both catalogs
+merged_catalog['MY_Teff'] = merged_catalog['Teff']
+merged_catalog['THEIR_Teff'] = merged_catalog['Teff']
+
+# Select the required columns for the final CSV
+final_catalog = merged_catalog[['TIC', 'MY_TIC', 'Teff', 'THEIR_TIC', 'THEIR_Teff']]
+
+# Print to verify the final DataFrame
+print("Final Catalog:")
+print(final_catalog.head())
+print("Final catalog row count:", final_catalog.shape[0])
+
+# Save the final catalog to a CSV file
+final_catalog.to_csv(r'C:\Users\aadis\Desktop\May17_plots\final_catalog.csv', index=False)
+print("Final catalog saved successfully.")
+
+
+
+##################################################################
+##################################################################
+#################      HISTOGRAM PLOTS      ######################
+##################################################################
+##################################################################
+
+# Load the CSV file into a DataFrame
+csv_file_path = r'C:\Users\aadis\Desktop\May17_plots\final_catalog.csv'
+final_catalog = pd.read_csv(csv_file_path)
+
+# Print the first few rows to inspect
+print(final_catalog.head())
+
+print(final_catalog.columns)
+
+# Define temperature bins (e.g., every 500 K)
+temperature_bins = range(2500, 7500, 250)  # Adjust the range and step as needed
+
+# Replace 'Teff' with the correct column name if needed
+temperature_column = 'Teff'  # Change this if your column has a different name
+
+# Bin the temperatures and count occurrences for each catalog
+my_flare_counts_by_temp_bin = pd.cut(final_catalog[final_catalog['MY_TIC'] == True][temperature_column], bins=temperature_bins).value_counts().sort_index()
+their_flare_counts_by_temp_bin = pd.cut(final_catalog[final_catalog['THEIR_TIC'] == True][temperature_column], bins=temperature_bins).value_counts().sort_index()
+
+# Create a DataFrame for easy plotting
+flare_counts_df = pd.DataFrame({'ARIMA': my_flare_counts_by_temp_bin, 'AllesFitter': their_flare_counts_by_temp_bin}).fillna(0)
+
+# Plot the histogram for comparison
+ax = flare_counts_df.plot(kind='bar', figsize=(14, 8))
+
+# Calculate totals
+my_total = len(final_catalog[final_catalog['MY_TIC'] == True])
+their_total = len(final_catalog[final_catalog['THEIR_TIC'] == True])
+
+# Customize the plot
+plt.xlabel('Effective Temperature (Teff) Bins')
+plt.ylabel('Number of Flares Detected')
+plt.title('Comparison of Flares Detected Across Temperature Bins')
+plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+plt.legend([f'ARIMA (Total: {my_total})', f'AllesFitter (Total: {their_total})'], title='Comparison')
+
+# Customize x-axis labels to show bin ranges more clearly
+bin_labels = [f'{bin.left}-{bin.right}' for bin in my_flare_counts_by_temp_bin.index]
+ax.set_xticklabels(bin_labels, rotation=45, ha='right')
+
+# Show the plot
+plt.show()
