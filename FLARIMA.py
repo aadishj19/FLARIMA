@@ -2,48 +2,36 @@
 # coding: utf-8
 
 # In[ ]:
-import os
+# Libraries and necessary imports
 import numpy as np
-import warnings
-from statsmodels.tsa.arima.model import ARIMA
-from sklearn.exceptions import ConvergenceWarning
+import os
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from astroquery.mast import Observations, Tesscut
-import astropy.units as u
-from astropy.table import Table
 from astropy.io import fits
-from scipy.optimize import curve_fit
-import csv
-import pandas as pd
 from lightkurve import TessLightCurveFile
-import itertools
-import pickle
+from statsmodels.tsa.arima.model import ARIMA
+import warnings
+from tqdm import tqdm
 import logging
-import scipy.optimize as opt
-import scipy.integrate as integrate
+import csv
 
+# Function definitions
 def find_flare_times(flare_indices, time_days, normalized_flux):
     flare_start_times = []
     flare_end_times = []
     flare_peak_times = []
 
     for index in flare_indices:
-        # Assuming the start time finding mechanism remains unchanged
         start_index = index
         while start_index > 0 and normalized_flux[start_index] > normalized_flux[start_index - 1]:
             start_index -= 1
         flare_start_times.append(time_days[start_index])
 
-        # The peak time is direct
         peak_flux = normalized_flux[index]
         flare_peak_times.append(time_days[index])
 
-        # Modified end time finding mechanism
-        pre_flare_background_flux = normalized_flux[start_index]  # Approximation of background level from start
+        pre_flare_background_flux = normalized_flux[start_index]
         half_max_level = (peak_flux + pre_flare_background_flux) / 2
         end_index = index
-        # Move forward until the flux drops below half_max_level
         while end_index < len(normalized_flux) - 1 and normalized_flux[end_index] > half_max_level:
             end_index += 1
         flare_end_times.append(time_days[end_index])
@@ -53,58 +41,40 @@ def find_flare_times(flare_indices, time_days, normalized_flux):
 # Initialize logging
 logging.basicConfig(filename='flare_detection_errors.log', level=logging.ERROR)
 
-# Define the data cleaning function
 def clean_data(time, flux):
-    """Replace `inf` and `NaN` values in both time and flux arrays."""
     cleaned_flux = np.nan_to_num(flux, nan=0.0, posinf=0.0, neginf=0.0)
-    # Keep only entries where both time and flux are finite
     mask = np.isfinite(time) & np.isfinite(cleaned_flux)
     cleaned_time = time[mask]
     cleaned_flux = cleaned_flux[mask]
     return cleaned_time, cleaned_flux
 
-# Modify the exponential_decay function to handle overflows
-def exponential_decay(t, A, t0, tau, C):
-    exp_argument = np.clip(-(t - t0) / tau, a_min=None, a_max=20) # Prevent overflow
-    return A * np.exp(exp_argument) + C
-
-# Wrap curve fitting in a try-except block and logs issues
-# Fit Exponential Decay
-def fit_exponential_decay(time, flux, initial_guess=(1, 0, 1, 1)):
+def equivalent_duration(time, flux, start, stop, err=False):
     try:
-        time, flux = clean_data(time, flux)  # Clean data first
-        # Set bounds based on the actual time and flux data
-        A_bound = (0, np.inf)
-        t0_bound = (time.min(), time.max())
-        tau_bound = (0, np.inf)
-        C_bound = (0, np.inf)
-        bounds = (A_bound[0], t0_bound[0], tau_bound[0], C_bound[0]), (A_bound[1], t0_bound[1], tau_bound[1], C_bound[1])
+        start, stop = int(start), int(stop) + 1
+        flare_time_segment = time[start:stop] # time in days
+        flare_flux_segment = flux[start:stop]
 
-        # Validate and debug the initial guess and bounds:
-        print(f"Initial Guess: {initial_guess}")
-        print(f"Bounds: {bounds}")
+        residual = flare_flux_segment - 1.0  # Assuming flux is normalized
+        logging.debug(f'Residual: {residual}')
+        
+        # Ensure non-negative residuals
+        residual = np.maximum(residual, 0)
+        
+        # Convert time to seconds 
+        x_time_seconds = flare_time_segment * 60.0 * 60.0 * 24.0  # days to seconds
+        ed = np.sum(np.diff(x_time_seconds) * residual[:-1])
+        logging.debug(f'Calculated equivalent duration: {ed}')
 
-        # Ensure initial guess within bounds
-        for guess, low, high in zip(initial_guess, *bounds):
-            if not (low <= guess <= high):
-                raise ValueError(f"Initial guess {guess} is out of bounds {low}, {high}")
-
-        params, cov = curve_fit(exponential_decay, time, flux, p0=initial_guess, bounds=bounds)
-        return params
-    except RuntimeError as e:
-        logging.error(f"Error in curve fitting: {e}")
-        return None
-    except ValueError as e:
-        logging.error(f"Value error in curve fitting: {e}")
-        return None
-
-# Explicitly handle the case where curve fitting fails by returning np.nan for integration
-def integrate_exponential_decay(params, start, end):
-    if params is None:
+        if err:
+            flare_chisq = chi_square(residual[:-1], flare_flux_segment.std())
+            ederr = np.sqrt(ed**2 / (stop-1-start) / flare_chisq)
+            return ed, ederr
+        else:
+            return ed
+    except Exception as e:
+        logging.error(f"Error in equivalent_duration: {e}")
+        print(f"Error in equivalent_duration: {e}")
         return np.nan
-    A, t0, tau, C = params
-    integral, _ = integrate.quad(lambda t: A * np.exp(-(t - t0) / tau) + C, start, end)
-    return integral
 
 def analyze_tess_data_from_directory(directory, resume_last_processed=True):
     lc_file_paths = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('_lc.fits')]
@@ -123,18 +93,13 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
 
     for file_path in lc_file_paths:
         lcf = TessLightCurveFile(file_path)
-        flux = lcf.flux
-        flux_err = lcf.flux_err
-        time = lcf.time.value
+        flux = lcf.flux.value  # Convert to correct unit
+        time = lcf.time.value  # Convert to numpy array, time in days
         time_days = time
         median_flux = np.median(flux)
         std_flux = np.std(flux)
         normalized_flux = (flux - median_flux) / std_flux
         normalized_flux = normalized_flux + 1
-
-        # Add a constant to the flux to set baseline to 1
-        #baseline = 1 
-        #normalized_flux += (baseline - np.min(normalized_flux))
 
         # Reevaluate ARIMA Model Parameters
         p_values = range(0, 3)
@@ -148,7 +113,7 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         best_aic = float("inf")
         best_model = None
 
-        warnings.filterwarnings("ignore", category=ConvergenceWarning)  # Ignore ConvergenceWarning
+        warnings.filterwarnings("ignore", category=Warning)  # Ignore general warnings
 
         for p in p_values:
             for d in d_values:
@@ -179,7 +144,7 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         flare_threshold = np.std(residuals) * 3.5
         flare_indices = np.where(residuals > flare_threshold)[0]
         flare_times = time_days[flare_indices]
-        
+
         # Find flare times
         flare_start_times, flare_end_times, flare_peak_times = find_flare_times(flare_indices, time_days, normalized_flux)
 
@@ -187,68 +152,82 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         file_name = os.path.basename(file_path)
         obs_id = file_name.split('-')[2]
         tic_id = obs_id.split('0000000')[1].split('-')[0]  # Extracting TIC ID from the observation ID
-        
+
         # Apply additional flare detection criteria
         min_duration = 0.004  # Minimum flare duration in days
         min_amplitude = 0.0005  # Minimum flare amplitude
 
         # Filter out flares that do not meet the criteria
         filtered_flare_times = []
+        filtered_amplitudes = []
         for start_time, peak_time, end_time in zip(flare_start_times, flare_peak_times, flare_end_times):
-            amplitude = normalized_flux[np.where(time_days == peak_time)] - normalized_flux[np.where(time_days == start_time)]
-            duration = end_time - start_time
-            decline_duration = end_time - peak_time
-            rise_duration = peak_time - start_time
+            start_index = np.argmin(np.abs(time_days - start_time))
+            peak_index = np.argmin(np.abs(time_days - peak_time))
+
+            amplitude = normalized_flux[peak_index] - normalized_flux[start_index]
+            duration = end_time - start_time  # duration in days
+            decline_duration = end_time - peak_time  # in days
+            rise_duration = peak_time - start_time  # in days
             points_between = len(np.where((time_days >= start_time) & (time_days <= end_time))[0])
 
             if duration >= min_duration and amplitude >= min_amplitude and decline_duration > rise_duration and points_between >= 2:
                 filtered_flare_times.append((start_time, end_time, peak_time))
+                filtered_amplitudes.append(amplitude)
             else:
                 print("Criteria not met for this potential flare.")
-                
-                
-        # For each detected flare:
-        flare_energies = []
-        for start_time, end_time, peak_time in filtered_flare_times:
-            flare_time_segment = time_days[(time_days >= start_time) & (time_days <= end_time)]
-            flare_flux_segment = normalized_flux[(time_days >= start_time) & (time_days <= end_time)]
 
-            # Fit the exponential decay model to the flare
-            initial_guess = (flare_flux_segment.max(), peak_time, 0.1, 1)
+        # Compute equivalent durations for each detected flare
+        flare_equivalent_durations = []
+        for (start_time, end_time, peak_time), amplitude in zip(filtered_flare_times, filtered_amplitudes):
+            start_index = np.argmin(np.abs(time_days - start_time))
+            end_index = np.argmin(np.abs(time_days - end_time))
+
+            print(f"Calculating equivalent duration for flare from {start_time} to {end_time}")
+
             try:
-                params = fit_exponential_decay(flare_time_segment, flare_flux_segment, initial_guess)
-                energy = integrate_exponential_decay(params, start_time, end_time)
-                flare_energies.append(energy)
-            except RuntimeError:
-                print("Could not fit an exponential decay to this flare.")
-                flare_energies.append(np.nan)
-                
-        # Plotting
-        fig, axs = plt.subplots(2, 1, figsize=(12, 18), sharex=True, gridspec_kw={'hspace': 0})
-        
-        # Plot 1: Detected Flares and ARIMA Model Prediction
-        axs[0].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
-        axs[0].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
-        axs[0].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
-        axs[0].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
-        axs[0].set_ylabel('Normalized Flux')
+                ed = equivalent_duration(time_days, normalized_flux, start_index, end_index)
+                flare_equivalent_durations.append(ed)
+                print(f"Calculated equivalent duration: {ed}")
+            except Exception as e:
+                logging.error(f"Error calculating equivalent duration for flare from {start_time} to {end_time}: {e}")
+                flare_equivalent_durations.append(np.nan)
 
-        # Plot 2: Detected Flares that meet the additional criteria
-        axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
+        # Plotting
+        original_flux = flux
+        fig, axs = plt.subplots(3, 1, figsize=(12, 24), sharex=True, gridspec_kw={'hspace': 0.3})
+
+        # Plot 1: Original Flux with Filtered Detected Flares
+        axs[0].plot(time_days, original_flux, 'b-', label='Original Flux')
         filtered_peak_times = [peak_time for start_time, end_time, peak_time in filtered_flare_times]
-        filtered_flux = [normalized_flux[np.where(time_days == peak_time)][0] for peak_time in filtered_peak_times]
-        axs[1].scatter(filtered_peak_times, filtered_flux, color='r', label='Detected Flares', zorder=3)  # Scatter plot for detected flares
-        axs[1].set_xlabel('Time (BJD)')
+        filtered_peak_fluxes = [original_flux[np.argmin(np.abs(time_days - peak_time))] for peak_time in filtered_peak_times]
+        axs[0].scatter(filtered_peak_times, filtered_peak_fluxes, color='r', label='Filtered Flares', zorder=3)
+        axs[0].set_title(f'Filtered Flares in Original Lightcurve of TIC {tic_id}')
+        axs[0].set_ylabel('Flux')
+        axs[0].legend()
+
+        # Plot 2: Normalized Flux with ARIMA Model Prediction
+        axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
+        axs[1].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
+        axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
+        axs[1].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
         axs[1].set_ylabel('Normalized Flux')
+        axs[1].legend()
+
+        # Plot 3: Detected Flares that meet the additional criteria
+        filtered_flux_values = [float(normalized_flux[np.where(time_days == peak_time)][0]) for peak_time in filtered_peak_times]  # Ensure scalar values
+        axs[2].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
+        axs[2].scatter(filtered_peak_times, filtered_flux_values, color='r', label='Detected Flares', zorder=3)
+        axs[2].set_xlabel('Time (BJD)')
+        axs[2].set_ylabel('Normalized Flux')
+        axs[2].legend()
 
         # Save the plot with TIC ID in the file name
-        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', f'flare_detection_TIC{tic_id}.png')
+        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\May26_plots', f'flare_detection_TIC{tic_id}.png')
         plt.savefig(plot_file_path)
-                
-                
+
         # Extract flare properties and save to CSV
-        headers = ['tess_id', 'flare_start_time', 'flare_end_time', 'flare_peak_time', 'amplitude', 'duration', 'energy']
-        csv_file_path = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', "flare_results_may_17.csv")
+        headers = ['tess_id', 'flare_start_time', 'flare_end_time', 'flare_peak_time', 'amplitude', 'duration', 'equivalent_duration']
+        csv_file_path = os.path.join(r'C:\Users\aadis\Desktop\May26_plots', "flare_results_may_26.csv")
         file_exists = os.path.isfile(csv_file_path)
 
         with open(csv_file_path, 'a', newline='') as csvfile:
@@ -257,28 +236,18 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
             if not file_exists:
                 writer.writerow(headers)
 
-            for (start_time, end_time, peak_time), energy in zip(filtered_flare_times, flare_energies):
-                # Calculate amplitude and duration for the current flare
-                start_index = np.argmin(np.abs(time_days - start_time))
-                peak_index = np.argmin(np.abs(time_days - peak_time))
-                amplitude = normalized_flux[peak_index] - normalized_flux[start_index]
-                duration = end_time - start_time
+            for ((start_time, end_time, peak_time), amplitude, ed) in zip(filtered_flare_times, filtered_amplitudes, flare_equivalent_durations):
+                duration = end_time - start_time  # duration in days
+                writer.writerow([tic_id, start_time, end_time, peak_time, amplitude, duration, ed])
 
-                writer.writerow([tic_id, start_time, end_time, peak_time, amplitude, duration, energy])
-                
-                
         # Update the last processed file
         with open("last_processed_file.txt", "w") as file:
             file.write(file_path)
-            
-            
+
     return normalized_flux, file_path
 
 # Example usage
 directory = r'C:\Users\aadis\Downloads\comparison'  # Directory containing TESS data files
-
-# Create a new CSV file and write the header row
-csv_file = os.path.join(r'C:\Users\aadis\Desktop\May17_plots', "flare_results_may_17.csv")
 
 # Run the analysis and save the results to the CSV file
 analyze_tess_data_from_directory(directory)
