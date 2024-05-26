@@ -54,7 +54,7 @@ def equivalent_duration(time, flux, start, stop, err=False):
         flare_time_segment = time[start:stop] # time in days
         flare_flux_segment = flux[start:stop]
 
-        residual = flare_flux_segment - 1.0  # Assuming flux is normalized
+        residual = flare_flux_segment - 1.0  # As flux is normalized
         logging.debug(f'Residual: {residual}')
         
         # Ensure non-negative residuals
