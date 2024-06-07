@@ -14,7 +14,6 @@ from tqdm import tqdm
 import logging
 import csv
 
-# Function definitions
 def find_flare_times(flare_indices, time_days, normalized_flux):
     flare_start_times = []
     flare_end_times = []
@@ -48,20 +47,24 @@ def clean_data(time, flux):
     cleaned_flux = cleaned_flux[mask]
     return cleaned_time, cleaned_flux
 
-def equivalent_duration(time, flux, start, stop, err=False):
+def equivalent_duration(time, normalized_flux, start, stop, err=False):
     try:
         start, stop = int(start), int(stop) + 1
-        flare_time_segment = time[start:stop] # time in days
-        flare_flux_segment = flux[start:stop]
+        flare_time_segment = time[start:stop]
+        flare_flux_segment = normalized_flux[start:stop]
 
-        residual = flare_flux_segment - 1.0  # As flux is normalized
+        residual = flare_flux_segment - 1.0  # Assuming flux is already normalized
         logging.debug(f'Residual: {residual}')
         
-        # Ensure non-negative residuals
+        # Ensure there are no NaNs or infinities
+        if np.any(np.isnan(residual)) or np.any(np.isinf(residual)):
+            raise ValueError("Residual contains NaNs or infinite values")
+        
+        # Ensure residuals are positive or zero
         residual = np.maximum(residual, 0)
         
-        # Convert time to seconds 
-        x_time_seconds = flare_time_segment * 60.0 * 60.0 * 24.0  # days to seconds
+        # Convert time to seconds
+        x_time_seconds = flare_time_segment * 60.0 * 60.0 * 24.0  
         ed = np.sum(np.diff(x_time_seconds) * residual[:-1])
         logging.debug(f'Calculated equivalent duration: {ed}')
 
@@ -94,7 +97,8 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
     for file_path in lc_file_paths:
         lcf = TessLightCurveFile(file_path)
         flux = lcf.flux.value  # Convert to correct unit
-        time = lcf.time.value  # Convert to numpy array, time in days
+        flux_err = lcf.flux_err.value  # Convert to correct unit
+        time = lcf.time.value
         time_days = time
         median_flux = np.median(flux)
         std_flux = np.std(flux)
@@ -161,13 +165,10 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         filtered_flare_times = []
         filtered_amplitudes = []
         for start_time, peak_time, end_time in zip(flare_start_times, flare_peak_times, flare_end_times):
-            start_index = np.argmin(np.abs(time_days - start_time))
-            peak_index = np.argmin(np.abs(time_days - peak_time))
-
-            amplitude = normalized_flux[peak_index] - normalized_flux[start_index]
-            duration = end_time - start_time  # duration in days
-            decline_duration = end_time - peak_time  # in days
-            rise_duration = peak_time - start_time  # in days
+            amplitude = normalized_flux[np.where(time_days == peak_time)] - normalized_flux[np.where(time_days == start_time)]
+            duration = end_time - start_time
+            decline_duration = end_time - peak_time
+            rise_duration = peak_time - start_time
             points_between = len(np.where((time_days >= start_time) & (time_days <= end_time))[0])
 
             if duration >= min_duration and amplitude >= min_amplitude and decline_duration > rise_duration and points_between >= 2:
@@ -176,9 +177,9 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
             else:
                 print("Criteria not met for this potential flare.")
 
-        # Compute equivalent durations for each detected flare
+        # For each detected flare:
         flare_equivalent_durations = []
-        for (start_time, end_time, peak_time), amplitude in zip(filtered_flare_times, filtered_amplitudes):
+        for start_time, end_time, peak_time in filtered_flare_times:
             start_index = np.argmin(np.abs(time_days - start_time))
             end_index = np.argmin(np.abs(time_days - end_time))
 
@@ -208,26 +209,26 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
         # Plot 2: Normalized Flux with ARIMA Model Prediction
         axs[1].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
         axs[1].plot(time_days, predicted_flux, 'r-', label='ARIMA Model Prediction')
-        axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Detected Flares')
+        axs[1].scatter(flare_times, normalized_flux[flare_indices], color='g', label='Potential Flares')
         axs[1].set_title(f'Detected Flares in Lightcurve of TIC {tic_id} using ARIMA')
         axs[1].set_ylabel('Normalized Flux')
         axs[1].legend()
 
         # Plot 3: Detected Flares that meet the additional criteria
-        filtered_flux_values = [float(normalized_flux[np.where(time_days == peak_time)][0]) for peak_time in filtered_peak_times]  # Ensure scalar values
         axs[2].plot(time_days, normalized_flux, 'b-', label='Normalized Flux')
-        axs[2].scatter(filtered_peak_times, filtered_flux_values, color='r', label='Detected Flares', zorder=3)
+        filtered_flux_values = [float(normalized_flux[np.where(time_days == peak_time)][0]) for peak_time in filtered_peak_times]  # Ensure scalar values
+        axs[2].scatter(filtered_peak_times, filtered_flux_values, color='r', label='Filtered Flares', zorder=3)
         axs[2].set_xlabel('Time (BJD)')
         axs[2].set_ylabel('Normalized Flux')
         axs[2].legend()
 
         # Save the plot with TIC ID in the file name
-        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\May26_plots', f'flare_detection_TIC{tic_id}.png')
+        plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\June3_plots', f'flare_detection_TIC{tic_id}.png')
         plt.savefig(plot_file_path)
 
         # Extract flare properties and save to CSV
         headers = ['tess_id', 'flare_start_time', 'flare_end_time', 'flare_peak_time', 'amplitude', 'duration', 'equivalent_duration']
-        csv_file_path = os.path.join(r'C:\Users\aadis\Desktop\May26_plots', "flare_results_may_26.csv")
+        csv_file_path = os.path.join(r'C:\Users\aadis\Desktop\June3_plots', "flare_results_june_3.csv")
         file_exists = os.path.isfile(csv_file_path)
 
         with open(csv_file_path, 'a', newline='') as csvfile:
@@ -237,7 +238,7 @@ def analyze_tess_data_from_directory(directory, resume_last_processed=True):
                 writer.writerow(headers)
 
             for ((start_time, end_time, peak_time), amplitude, ed) in zip(filtered_flare_times, filtered_amplitudes, flare_equivalent_durations):
-                duration = end_time - start_time  # duration in days
+                duration = end_time - start_time
                 writer.writerow([tic_id, start_time, end_time, peak_time, amplitude, duration, ed])
 
         # Update the last processed file
