@@ -214,7 +214,7 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
             axs[2].legend()
 
             # Save the plot with TIC ID in the file name
-            plot_file_path = os.path.join(r'C:\Users\aadis\Desktop\June11_plots', f'flare_detection_TIC{tic_id}.png')
+            plot_file_path = os.path.join(r'C:\Users\path_to_directory', f'flare_detection_TIC{tic_id}.png')
             plt.savefig(plot_file_path)
             
             for i, props in enumerate(flare_properties):
@@ -222,7 +222,7 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
 
             # Save results
             headers = ['TIC_ID', 'T_eff', 'Start_time', 'End_time', 'Peak_time(BJD)', 'Amplitude', 'Duration(days)', 'Flare_energy(erg)', 'ED(s)']
-            csv_file_path = r'C:\Users\aadis\Desktop\June11_plots\flare_energies.csv'
+            csv_file_path = r'C:\Users\path_to_directory\flare_energies.csv'
             file_exists = os.path.isfile(csv_file_path)
 
             with open(csv_file_path, 'a', newline='') as csvfile:
