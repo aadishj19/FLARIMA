@@ -228,7 +228,7 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
             with open(csv_file_path, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 if not file_exists:
-                    writer.writeheader()
+                    writer.writerow(headers)
                 for props in flare_properties:
                     writer.writerow(props)
 
