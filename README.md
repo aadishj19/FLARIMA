@@ -1,6 +1,6 @@
 # FLARIMA
 
-This repository contains code for the project "Characterizing Stellar Flares in TESS Data Using ARIMA." The project aims to detect and analyze stellar flares using data from the TESS (Transiting Exoplanet Survey Satellite) mission. The code is designed to process light curve data, detect flares using ARIMA (AutoRegressive Integrated Moving Average) models, and characterize the detected flares.
+Code for Characterizing Stellar Flares in TESS Data. The project aims to detect and analyze stellar flares using data from the TESS (Transiting Exoplanet Survey Satellite) mission. The code is designed to process light curve data, detect flares using ARIMA (AutoRegressive Integrated Moving Average) models, and characterize the detected flares.
 
 ## Project Structure
 
