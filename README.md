@@ -44,4 +44,4 @@ The main script to run the analysis. It sets up logging, defines file paths, and
 The results include:
 
 Plots of the detected flares and their properties.
-CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, and flare energy.
+CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, and flare energy.```
