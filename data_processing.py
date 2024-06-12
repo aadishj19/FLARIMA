@@ -5,6 +5,8 @@ import csv
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from astropy.constants import sigma_sb
 from lightkurve import TessLightCurveFile
 from astropy.io import fits
 from tqdm import tqdm
@@ -234,5 +236,5 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
             with open("last_processed_file.txt", "w") as file:
                 file.write(file_path)
 
-            except Exception as e:
-                logging.error(f"Error processing {file_path}: {e}")
+        except Exception as e:
+            logging.error(f"Error processing {file_path}: {e}")
