@@ -26,7 +26,7 @@ project/
 
 To run this project, you need to have Python installed along with some specific libraries. You can install the required packages using `pip`:
 
-```sh
+```
 pip install numpy pandas matplotlib lightkurve scipy statsmodels astropy tqdm
 
 ## Usage
