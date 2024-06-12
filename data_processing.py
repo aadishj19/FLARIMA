@@ -10,6 +10,7 @@ from astropy.constants import sigma_sb
 from lightkurve import TessLightCurveFile
 from astropy.io import fits
 from tqdm import tqdm
+import warnings
 from constants import R_sun_to_cm, BTJD_OFFSET, days_to_seconds
 from utils import read_tess_response_function, read_pecaut_mamajek_table, convert_to_bjd
 from lightcurve_analysis import planck_function, integrate_luminosity, fit_exponential_decay, integrate_exponential_decay, find_flare_times, equivalent_duration
