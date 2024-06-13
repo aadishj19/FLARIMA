@@ -1,5 +1,35 @@
 # lightcurve_analysis.py
 
+'''
+This module includes functions for analyzing light curves, specifically aimed at detecting and characterizing stellar flares.
+It includes utilities for Planck function computation, integrating luminosity, fitting exponential decay models, and calculating
+equivalent durations.
+
+Functions:
+----------
+1. planck_function(wavelength, temperature)
+    Computes the Planck function for a given wavelength and temperature.
+
+2. integrate_luminosity(R_lambda, B_lambda, wavelengths)
+    Integrates the luminosity using the TESS response function R_lambda and the Planck function B_lambda over the given wavelengths.
+
+3. exponential_decay(t, A, t0, tau, C)
+    Defines an exponential decay model function.
+
+4. fit_exponential_decay(time, flux, initial_guess=(1, 0, 1, 1))
+    Fits an exponential decay model to the given time and flux data using non-linear least squares.
+
+5. integrate_exponential_decay(params, start_time, end_time)
+    Integrates the exponential decay model over the specified time range.
+
+6. find_flare_times(flare_indices, time, normalized_flux)
+    Identifies flare start, peak, and end times based on the flare indices, time array, and normalized flux.
+
+7. equivalent_duration(time, normalized_flux, start, stop, err=False)
+    Calculates the equivalent duration of a flare, optionally with error estimation.
+'''
+
+
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.integrate import simps, quad
