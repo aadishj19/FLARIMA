@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # Split the list of files into chunks for each process
     file_chunks = [all_files[i::num_processes] for i in range(num_processes)]
 
-    # Create a Manager for shared Lock
+    # Manager for shared Lock
     with multiprocessing.Manager() as manager:
         lock = manager.Lock()
 
