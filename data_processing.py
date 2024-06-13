@@ -5,42 +5,23 @@ import csv
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+import warnings
 from statsmodels.tsa.arima.model import ARIMA
 from astropy.constants import sigma_sb
 from lightkurve import TessLightCurveFile
 from astropy.io import fits
 from tqdm import tqdm
-import warnings
 from constants import R_sun_to_cm, BTJD_OFFSET, days_to_seconds
 from utils import read_tess_response_function, read_pecaut_mamajek_table, convert_to_bjd
 from lightcurve_analysis import planck_function, integrate_luminosity, fit_exponential_decay, integrate_exponential_decay, find_flare_times, equivalent_duration
 
-def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, resume_last_processed=True):
-    lc_file_paths = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('_lc.fits')]
-
-    last_processed_file_path = None
-    if resume_last_processed:
-        try:
-            with open("last_processed_file.txt", "r") as file:
-                last_processed_file_path = file.read().strip()
-        except FileNotFoundError:
-            pass
-
-    if last_processed_file_path in lc_file_paths:
-        resume_index = lc_file_paths.index(last_processed_file_path)
-        lc_file_paths = lc_file_paths[resume_index + 1:]
-
-    if not lc_file_paths:
-        print("No new files to process.")
-        return
-
-    # Read TESS Response Function
+def analyze_tess_data_from_files(file_paths, trf_file, pecaut_mamajek_file, lock):
     wavelengths, R_lambda = read_tess_response_function(trf_file)
 
     # Read Pecaut & Mamajek Table for radius estimation
     pecaut_mamajek_data = read_pecaut_mamajek_table(pecaut_mamajek_file)
 
-    for file_path in lc_file_paths:
+    for file_path in file_paths:
         try:
             lcf = TessLightCurveFile(file_path)
             flux = lcf.flux.value  # Extract correct lightcurve flux
@@ -215,7 +196,7 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
             axs[2].legend()
 
             # Save the plot with TIC ID in the file name
-            plot_file_path = os.path.join(r'C:\Users\path_to_directory', f'flare_detection_TIC{tic_id}.png')
+            plot_file_path = os.path.join(r'C:\Users\aadis\Downloads\FLARIMA-main\FLARIMA-main\plots', f'flare_detection_TIC{tic_id}.png')
             plt.savefig(plot_file_path)
             
             for i, props in enumerate(flare_properties):
@@ -223,19 +204,21 @@ def analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, r
 
             # Save results
             headers = ['TIC_ID', 'T_eff', 'Start_time', 'End_time', 'Peak_time(BJD)', 'Amplitude', 'Duration(days)', 'Flare_energy(erg)', 'ED(s)']
-            csv_file_path = r'C:\Users\path_to_directory\flare_energies.csv'
+            csv_file_path = r'C:\Users\aadis\Downloads\FLARIMA-main\FLARIMA-main\flare_energies.csv'
             file_exists = os.path.isfile(csv_file_path)
 
-            with open(csv_file_path, 'a', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                if not file_exists:
-                    writer.writerow(headers)
-                for props in flare_properties:
-                    writer.writerow(props)
+
+            with lock:
+                with open(csv_file_path, 'a', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    if not file_exists:
+                        writer.writerow(headers)
+                    for props in flare_properties:
+                        writer.writerow(props)
 
             # Update last processed file
-            with open("last_processed_file.txt", "w") as file:
-                file.write(file_path)
+            #with open("last_processed_file.txt", "w") as file:
+                #file.write(file_path)
 
         except Exception as e:
             logging.error(f"Error processing {file_path}: {e}")
