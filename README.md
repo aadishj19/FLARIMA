@@ -13,13 +13,12 @@ The project is organized into several Python modules, each with a specific purpo
 
 ## Directory Structure
 project/
-│
 ├── constants.py
 ├── utils.py
 ├── lightcurve_analysis.py
 ├── data_processing.py
-├── main.py
-└── last_processed_file.txt (optional, if resuming from the last processed file)
+└── main.py
+
 
 
 ## Installation
