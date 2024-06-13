@@ -35,10 +35,7 @@ Ensure you have the necessary TESS light curve data files in your working direct
 
 2. Running the Analysis
 Execute the main.py script to start the analysis process:
-analyze_tess_data_from_directory(directory, trf_file, pecaut_mamajek_file, resume_last_processed=True): Processes TESS light curve files, detects flares, and calculates their properties.
-
-**main.py**
-The main script to run the analysis. It sets up logging, defines file paths, and calls the analyze_tess_data_from_directory function.
+Processes TESS light curve files, detects flares, and calculates their properties.
 
 **Results**
 The results include:
