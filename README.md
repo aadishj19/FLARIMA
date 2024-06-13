@@ -12,14 +12,12 @@ The project is organized into several Python modules, each with a specific purpo
 - `main.py`: The main script to run the analysis.
 
 ## Directory Structure
-project/    
+FLARIMA/    
 ├── constants.py                  
 ├── utils.py                    
 ├── lightcurve_analysis.py                     
 ├── data_processing.py                    
-├── main.py                   
-
-
+└── main.py                   
 
 ## Installation
 
