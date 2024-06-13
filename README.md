@@ -13,11 +13,11 @@ The project is organized into several Python modules, each with a specific purpo
 
 ## Directory Structure
 project/
-├── constants.py
-├── utils.py
-├── lightcurve_analysis.py
-├── data_processing.py
-└── main.py
+├── constants.py                  
+├── utils.py                    
+├── lightcurve_analysis.py                     
+├── data_processing.py                    
+├── main.py                   
 
 
 
