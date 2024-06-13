@@ -26,7 +26,9 @@ project/
 
 To run this project, you need to have Python installed along with some specific libraries. You can install the required packages using :
 ```
-pip install -r requirements.txt
+>>> git clone https://github.com/aadishj19/FLARIMA.git
+>>> cd FLARIMA
+>>> pip install -r requirements.txt
 ```
 **Usage**
 1. Setup
