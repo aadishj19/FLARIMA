@@ -1,5 +1,58 @@
 # data_processing.py
+'''
+Analyze TESS data from specified files.
 
+    This function processes TESS light curve files, detects potential stellar flares,
+    and calculates various properties such as their amplitude, duration, and energy. The analysis
+    includes normalizing the flux, applying an ARIMA model to detect flares, fitting an exponential
+    decay model for flare energy estimation, and calculating equivalent durations.
+
+    Parameters:
+    ----------
+    file_paths : list of str
+        List of file paths to TESS light curve files to be analyzed.
+    trf_file : str
+        File path to the TESS response function data.
+    pecaut_mamajek_file : str
+        File path to the Pecaut & Mamajek table data necessary for radius estimation.
+    lock : multiprocessing.Lock
+        A lock to ensure safe writing of results in a multi-processing context.
+
+    Processing Steps:
+    -----------------
+    1. Load the TESS response function and Pecaut & Mamajek table data.
+    2. For each TESS light curve file:
+       a. Extract flux and time data from the light curve file.
+       b. Normalize the flux data.
+       c. Read necessary header information (e.g., stellar effective temperature and radius).
+       d. If stellar effective temperature (T_eff) is available:
+          - Compute the stellar luminosity using Planck's function.
+       e. Apply ARIMA models to detect flare indices.
+       f. Filter flare candidates based on thresholds.
+       g. If stellar radius is available:
+          - Fit the exponential decay model to estimate flare energy.
+       h. Calculate the equivalent duration of the detected flares.
+    3. Save results (flare properties and equivalent durations) to a CSV file.
+    4. Generate and save plots illustrating the original flux, ARIMA model predictions, and detected flares.
+
+    Flare Detection:
+    ----------------
+    - Flares are detected using an ARIMA model residual analysis.
+    - Flares are filtered based on duration, amplitude, and other criteria to ensure valid detections.
+    - Flare properties include start and end times, peak time (in BJD), amplitude, duration, and energy.
+
+    Plotting:
+    ----------
+    - Three plots are generated:
+      1. Original flux with filtered detected flares.
+      2. Normalized flux with ARIMA model prediction and detected flares.
+      3. Detected flares that meet additional criteria.
+
+    Output:
+    -------
+    - CSV file containing detected flare properties.
+    - PNG files with plots showing flare detections for each TESS light curve file.
+'''
 import os
 import csv
 import logging
