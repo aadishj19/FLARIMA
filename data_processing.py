@@ -1,11 +1,9 @@
 # data_processing.py
 '''
-Analyze TESS data from specified files.
-
-    This function processes TESS light curve files, detects potential stellar flares,
-    and calculates various properties such as their amplitude, duration, and energy. The analysis
-    includes normalizing the flux, applying an ARIMA model to detect flares, fitting an exponential
-    decay model for flare energy estimation, and calculating equivalent durations.
+This function processes TESS light curve files, detects potential stellar flares,
+and calculates various properties such as their amplitude, duration, and energy. The analysis
+includes normalizing the flux, applying an ARIMA model to detect flares, fitting an exponential
+decay model for flare energy estimation, and calculating equivalent durations.
 
     Parameters:
     ----------
