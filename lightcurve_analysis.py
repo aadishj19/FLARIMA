@@ -1,8 +1,7 @@
 # lightcurve_analysis.py
 
 '''
-This module includes functions for analyzing light curves, specifically aimed at detecting and characterizing stellar flares.
-It includes utilities for Planck function computation, integrating luminosity, fitting exponential decay models, and calculating
+Includes utilities for Planck function computation, integrating luminosity, fitting exponential decay models, and calculating
 equivalent durations.
 
 Functions:
