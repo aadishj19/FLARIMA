@@ -48,4 +48,4 @@ CSV file containing the properties of the detected flares, such as start time, e
 
 ## Note
 
-**Flarima** is still under active development. Future plan is to add flare injection and recovery tests. 
+**Flarima** is still under active development. Future plan is to add flare injection and recovery tests as well as function for calculating power laws.
