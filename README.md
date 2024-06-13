@@ -32,7 +32,7 @@ To run this project, you need to have Python installed along with some specific 
 ```
 **Usage**
 
-1. Setup
+1. Setup  
 Ensure you have the necessary TESS light curve data files in your working directory. You will also need the TESS response function file and the Pecaut & Mamajek table. Update the paths in your main.py as well as data_processing.py as needed.
 
 2. To run the analysis execute the main.py script to start the analysis process.
