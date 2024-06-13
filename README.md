@@ -12,7 +12,7 @@ The project is organized into several Python modules, each with a specific purpo
 - `main.py`: The main script to run the analysis.
 
 ## Directory Structure
-project/
+project/    
 ├── constants.py                  
 ├── utils.py                    
 ├── lightcurve_analysis.py                     
