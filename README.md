@@ -31,6 +31,7 @@ To run this project, you need to have Python installed along with some specific 
 >>> pip install -r requirements.txt
 ```
 **Usage**
+
 1. Setup
 Ensure you have the necessary TESS light curve data files in your working directory. You will also need the TESS response function file and the Pecaut & Mamajek table. Update the paths in your main.py as well as data_processing.py as needed.
 
@@ -39,6 +40,7 @@ Execute the main.py script to start the analysis process:
 Processes TESS light curve files, detects flares, and calculates their properties.
 
 **Results**
+
 The results include:
 Plots of the detected flares and their properties.
 CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, and flare energy.
