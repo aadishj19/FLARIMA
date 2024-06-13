@@ -24,10 +24,9 @@ project/
 
 ## Installation
 
-To run this project, you need to have Python installed along with some specific libraries. You can install the required packages using `pip`:
-
+To run this project, you need to have Python installed along with some specific libraries. You can install the required packages using :
 ```
-pip install numpy pandas matplotlib lightkurve scipy statsmodels astropy tqdm
+pip install -r requirements.txt
 
 **Usage**
 1. Setup
