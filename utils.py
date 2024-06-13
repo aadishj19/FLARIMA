@@ -1,4 +1,22 @@
 # utils.py
+'''
+utility functions for reading TESS response function data, Pecaut & Mamajek table data for stellar radius
+estimation, converting time values, and estimating stellar radii based on temperature using interpolation.
+
+Functions:
+----------
+1. read_tess_response_function(file_path)
+    Reads the TESS response function from a CSV file.
+
+2. read_pecaut_mamajek_table(file_path)
+    Reads the Pecaut & Mamajek table for stellar radius estimation based on effective temperature (T_eff).
+
+3. convert_to_bjd(btjd_values, BTJD_OFFSET)
+    Converts BTJD (Barycentric TESS Julian Date) to BJD (Barycentric Julian Date) by applying a given offset.
+
+4. estimate_radius_from_teff(teff, pecaut_mamajek_data)
+    Estimates the stellar radius from T_eff using the Pecaut & Mamajek table data. If T_eff is not directly available, interpolation is used.
+'''
 
 import numpy as np
 import pandas as pd
