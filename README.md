@@ -40,7 +40,8 @@ Processes TESS light curve files, detects flares, and calculates their propertie
 **Results**
 The results include:
 Plots of the detected flares and their properties.
-CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, and flare energy.```
+CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, and flare energy.
+```
 
 ## Note
 
