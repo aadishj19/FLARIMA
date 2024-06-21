@@ -78,10 +78,19 @@ def select_random_flare_times(time, num_flares, min_separation):
     return selected_times
 
 def is_flare_detected(t0, detected_flares, threshold=10 / 60 / 24):  # 10 minutes in days
-    for detected in detected_flares:
-        if np.abs(detected - t0) < threshold:
-            return True
+    if isinstance(detected_flares, list) and len(detected_flares) > 0:
+        if isinstance(detected_flares[0], tuple):  # Check if detected_flares is a list of tuples
+            for start, stop, _ in detected_flares:  # Unpack each tuple
+                if start <= t0 <= stop:
+                    return True
+        elif isinstance(detected_flares[0], (float, np.float64)):  # Check if detected_flares is a list of floats
+            for detected in detected_flares:
+                if np.abs(detected - t0) < threshold:
+                    return True
+        else:
+            raise TypeError("Unexpected type for detected_flares")
     return False
+
 
 def injection_grid(lcf, num_flares, flare_fwhms, flare_amplitudes, trf_file, pecaut_mamajek_file):
     flux = lcf.flux.value
@@ -144,16 +153,16 @@ def injection_grid(lcf, num_flares, flare_fwhms, flare_amplitudes, trf_file, pec
     return recovered
 
 # Define your file paths for the necessary files
-trf_file = r'C:\Users\aadis\Downloads\tess-response-function-v2.0.csv'
-pecaut_mamajek_file = r'C:\Users\aadis\Downloads\PecautMamajek2013.txt'
+trf_file = '/home/aadishj/Desktop/FLARIMA-main/tess-response-function-v2.0.csv'
+pecaut_mamajek_file = '/home/aadishj/Desktop/FLARIMA-main/PecautMamajek2013.txt'
 
-file_path = r'C:\Users\aadis\Downloads\FLARIMA-main\Test\tess2018234235059-s0002-0000000155776875-0121-s_lc.fits'
+file_path = '/home/aadishj/Desktop/FLARIMA-main/tess2018234235059-s0002-0000000155776875-0121-s_lc.fits'
 lcf = TessLightCurveFile(file_path)
 
 # Define grid with finer scales for better resolution
 num_flares = 3  # Number of flares to inject randomly
-flare_fwhms = np.linspace(0.002, 0.09, 5)  # in days, finer resolution (2.88 mins to 129.6 mins)
-flare_amplitudes = np.linspace(0.1, 2.0, 5)  # in normalized flux units, higher amplitude for testing
+flare_fwhms = np.linspace(0.002, 0.09, 10)  # in days, finer resolution (2.88 mins to 129.6 mins)
+flare_amplitudes = np.linspace(0.1, 2.0, 20)  # in normalized flux units, higher amplitude for testing
 
 # Run injection
 recovery_map = injection_grid(lcf, num_flares, flare_fwhms, flare_amplitudes, trf_file, pecaut_mamajek_file)
@@ -162,11 +171,15 @@ recovery_map = injection_grid(lcf, num_flares, flare_fwhms, flare_amplitudes, tr
 plt.figure(figsize=(10, 8))
 # Use pcolormesh for better control over binsize
 X, Y = np.meshgrid(flare_fwhms, flare_amplitudes)
-plt.pcolormesh(X, Y, recovery_map, cmap='heat', shading='auto')  # Change colormap to 'plasma'
+plt.pcolormesh(X, Y, recovery_map, cmap='gist_heat', shading='auto')  # Change colormap to 'plasma'
 
 plt.colorbar(label='Recovery Probability')
 plt.xlabel('Injected FWHM [days]')
 plt.ylabel('Injected Amplitude (normalized units)')
 plt.title('Flare Recovery Probability')
-
+# Save the heatmap plot
+heatmap_filename = '/home/aadishj/Desktop/FLARIMA-main/plots/flare_recovery_probability_heatmap.png'
+plt.savefig(heatmap_filename)
 plt.show()
+
+
