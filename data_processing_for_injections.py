@@ -1,5 +1,6 @@
-# data_processing.py
+# data_processing_Injections.py
 '''
+#######ONLY USE THIS FILE WHEN PERFORMING FLARE INJECTION AND RECOVERY TESTS###########
 This function processes TESS light curve files, detects potential stellar flares,
 and calculates various properties such as their amplitude, duration, and energy. The analysis
 includes normalizing the flux, applying an ARIMA model to detect flares, fitting an exponential
