@@ -40,7 +40,3 @@ The results include:
 Plots of the detected flares and their properties.
 CSV file containing the properties of the detected flares, such as start time, end time, amplitude, duration, equivalent duration, and flare energy.
 
-
-## Note
-
-**Flarima** is still under active development. Future plan is to add flare injection and recovery tests as well as function for calculating power laws.
